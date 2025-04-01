@@ -1,0 +1,689 @@
+﻿@page "/"
+@inject IJSRuntime JSRuntime
+@using System.IO;
+@using Microsoft.AspNetCore.Components.Forms;
+@using System.Threading.Tasks;
+@using System.Collections.Generic;
+@using System.Linq;
+
+<div class="container">
+    <h1>Multi-Image Compressor</h1>
+
+    <div class="upload-section">
+        <InputFile OnChange="OnFilesSelected" accept="image/*" multiple class="file-input" />
+
+        <p>Select one or more images to compress (max 10 files)</p>
+        
+        
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading">
+            <p>Processing images...</p>
+            @if (currentProgress > 0)
+            {
+                <div class="progress-container">
+                    <div class="progress-bar" style="width: @(currentProgress)%"></div>
+                </div>
+                <p>@currentProgress% complete</p>
+            }
+        </div>
+    }
+
+    @if (errorMessage != null)
+    {
+        <div class="error-message">
+            <p>@errorMessage</p>
+        </div>
+    }
+
+    @if (imageItems.Any())
+    {
+        <div class="uploaded-files">
+            <h3>Files</h3>
+            @foreach (var item in imageItems.Where(i => i.CompressedDataUrl == null))
+            {
+                <div class="file-info">
+                    <span class="filename">@item.FileName</span>
+                    <span class="filesize">@FormatFileSize(item.OriginalSize)</span>
+                </div>
+            }
+        </div>
+
+        <div class="settings">
+            <h2>Select Quality</h2>
+            <div class="quality-slider">
+                <label for="quality">Quality: @quality%</label>
+                <input type="range" id="quality" min="1" max="100" @bind="quality" />
+            </div>
+
+            <div class="preset-buttons">
+                <button class="preset-btn" @onclick="() => SetQualityWithoutCompression(80)">High (80%)</button>
+                <button class="preset-btn" @onclick="() => SetQualityWithoutCompression(60)">Medium (60%)</button>
+                <button class="preset-btn" @onclick="() => SetQualityWithoutCompression(30)">Low (30%)</button>
+            </div>
+
+            <div class="compress-button-container">
+                <button class="compress-btn" @onclick="CompressAllImages">Compress All</button>
+            </div>
+        </div>
+
+        <div class="image-grid">
+            <h2>Results</h2>
+            @foreach (var item in imageItems.Where(i => i.CompressedDataUrl != null))
+            {
+                <div class="image-item">
+                    <div class="preview-card">
+                        <h3>@item.FileName</h3>
+                        <div class="image-comparison">
+                            <div class="image-side">
+                                <h4>Original</h4>
+                                <img src="@item.OriginalDataUrl" alt="Original" />
+                                <p>Size: @FormatFileSize(item.OriginalSize)</p>
+                            </div>
+
+                            @if (item.CompressedDataUrl != null)
+                            {
+                                <div class="image-side">
+                                    <h4>Compressed</h4>
+                                    <img src="@item.CompressedDataUrl" alt="Compressed" />
+                                    <p>Size: @FormatFileSize(item.CompressedSize)</p>
+                                    <p>Saved: @item.CompressionRatio%</p>
+                                    <a href="@item.CompressedDataUrl" download="@item.GetOutputFileName(quality)" class="download-btn">Download</a>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (imageItems.All(i => i.CompressedDataUrl != null))
+        {
+            <div class="download-all-container">
+                <button class="download-all-btn" @onclick="DownloadAllCompressed">Download All Compressed Images</button>
+            </div>
+        }
+    }
+</div>
+
+
+
+@code {
+    private List<ImageItem> imageItems = new List<ImageItem>();
+    private int quality = 80;
+    private bool isLoading = false;
+    private string errorMessage = null;
+    private int currentProgress = 0;
+    private readonly long maxTotalSize = 500 * 1024 * 1024; // 500MB
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            errorMessage = null;
+
+            // Check total size
+            long totalSize = e.GetMultipleFiles().Sum(f => f.Size);
+            if (totalSize > maxTotalSize)
+            {
+                errorMessage = $"Total file size exceeds 500MB limit. Selected: {FormatFileSize(totalSize)}";
+                return;
+            }
+
+            isLoading = true;
+            currentProgress = 0;
+            StateHasChanged();
+
+            // Clear previous images
+            imageItems.Clear();
+
+            // Process each file
+            var files = e.GetMultipleFiles();
+            for (int i = 0; i < files.Count; i++)
+            {
+                var file = files[i];
+                await ProcessFile(file);
+
+                // Update progress
+                currentProgress = (int)((i + 1) / (double)files.Count * 100);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error processing files: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            currentProgress = 0;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessFile(IBrowserFile file)
+    {
+        // Create a new image item
+        var item = new ImageItem
+            {
+                FileName = file.Name,
+                OriginalSize = file.Size
+            };
+
+        // Process the file name
+        item.ProcessFileName();
+
+        // Read the file content
+        await using var stream = file.OpenReadStream(maxAllowedSize: maxTotalSize);
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream);
+        byte[] fileBytes = memoryStream.ToArray();
+        string base64 = Convert.ToBase64String(fileBytes);
+        string fileType = file.ContentType;
+        item.OriginalDataUrl = $"data:{fileType};base64,{base64}";
+
+        // Add to the list
+        imageItems.Add(item);
+    }
+
+    private async Task CompressAllImages()
+    {
+        if (!imageItems.Any())
+            return;
+
+        isLoading = true;
+        currentProgress = 0;
+        StateHasChanged();
+
+        try
+        {
+            for (int i = 0; i < imageItems.Count; i++)
+            {
+                var item = imageItems[i];
+                await CompressImage(item);
+
+                // Update progress
+                currentProgress = (int)((i + 1) / (double)imageItems.Count * 100);
+                StateHasChanged();
+            }
+        }
+        finally
+        {
+            isLoading = false;
+            currentProgress = 0;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CompressImage(ImageItem item)
+    {
+        if (string.IsNullOrEmpty(item.OriginalDataUrl))
+            return;
+
+        var result = await JSRuntime.InvokeAsync<ImageCompressionResult>("compressImage", item.OriginalDataUrl, quality);
+        item.CompressedDataUrl = result.DataUrl;
+        item.CompressedSize = result.Size;
+    }
+
+    private void SetQualityWithoutCompression(int value)
+    {
+        quality = value;
+        StateHasChanged();
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private async Task DownloadAllCompressed()
+    {
+        if (!imageItems.Any(i => i.CompressedDataUrl != null))
+            return;
+
+        await JSRuntime.InvokeVoidAsync("downloadAllImages",
+            imageItems.Select(i => i.CompressedDataUrl).ToArray(),
+            imageItems.Select(i => i.GetOutputFileName(quality)).ToArray());
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                window.compressImage = async function(dataUrl, quality) {
+                    return new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.onload = function() {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+
+                            // Convert to JPEG with specified quality
+                            const compressedDataUrl = canvas.toDataURL('image/jpeg', quality / 100);
+
+                            // Calculate size of the compressed image
+                            let size = Math.round((compressedDataUrl.length - 'data:image/jpeg;base64,'.length) * 3 / 4);
+
+                            resolve({
+                                dataUrl: compressedDataUrl,
+                                size: size
+                            });
+                        };
+
+                        img.onerror = function() {
+                            reject(new Error('Failed to load image'));
+                        };
+
+                        img.src = dataUrl;
+                    });
+                };
+
+                window.downloadAllImages = function(dataUrls, fileNames) {
+                    if (!dataUrls || dataUrls.length === 0) return;
+
+                    // For a single image, just trigger the download
+                    if (dataUrls.length === 1) {
+                        const link = document.createElement('a');
+                        link.href = dataUrls[0];
+                        link.download = fileNames[0];
+                        link.click();
+                        return;
+                    }
+
+                    // For multiple images, we need to create a ZIP file
+                    // This is a simplified approach - in a real app, you'd use a library like JSZip
+                    for (let i = 0; i < dataUrls.length; i++) {
+                        const link = document.createElement('a');
+                        link.href = dataUrls[i];
+                        link.download = fileNames[i];
+                        link.click();
+
+                        // Small delay to avoid overwhelming the browser
+                        if (i < dataUrls.length - 1) {
+                            setTimeout(() => {}, 100);
+                        }
+                    }
+                };
+            ");
+        }
+    }
+
+    public class ImageCompressionResult
+    {
+        public string DataUrl { get; set; }
+        public long Size { get; set; }
+    }
+
+    public class ImageItem
+    {
+        public string FileName { get; set; }
+        public string OriginalDataUrl { get; set; }
+        public string CompressedDataUrl { get; set; }
+        public long OriginalSize { get; set; }
+        public long CompressedSize { get; set; }
+        public string BaseFileName { get; private set; }
+        public string Extension { get; private set; }
+
+        public void ProcessFileName()
+        {
+            int lastDotIndex = FileName.LastIndexOf('.');
+            if (lastDotIndex > 0)
+            {
+                BaseFileName = FileName.Substring(0, lastDotIndex);
+                Extension = FileName.Substring(lastDotIndex);
+            }
+            else
+            {
+                BaseFileName = FileName;
+                Extension = ".jpg"; // Default extension
+            }
+        }
+
+        public string GetOutputFileName(int quality)
+        {
+            return $"{BaseFileName}_{quality}{Extension}";
+        }
+
+        public int CompressionRatio => OriginalSize > 0 ? 100 - (int)((double)CompressedSize / OriginalSize * 100) : 0;
+    }
+}
+
+
+<style>
+    body { /* Apply base font styles */
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+        color: #333;
+        line-height: 1.6;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 40px auto; /* Increased top/bottom margin */
+        padding: 30px; /* Increased padding */
+        background-color: #f8f9fa; /* Subtle background */
+        border-radius: 12px; /* Rounded corners for container */
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05); /* Softer shadow */
+    }
+
+    /* Center Headings */
+    h1, h2, h3 {
+        text-align: center;
+        color: #2c3e50; /* Darker heading color */
+        margin-bottom: 1.5em; /* Consistent bottom margin */
+    }
+
+    h1 {
+        font-size: 2.5em;
+        margin-bottom: 1em;
+    }
+
+    h2 {
+        font-size: 1.8em;
+        border-bottom: 1px solid #eee; /* Subtle separator */
+        padding-bottom: 0.5em;
+    }
+
+    h3 {
+        font-size: 1.4em;
+        color: #34495e;
+    }
+
+    h4 {
+        font-size: 1.1em;
+        color: #555;
+        margin-bottom: 0.8em;
+    }
+
+    .upload-section {
+        border: 2px dashed #007bff; /* Use primary color for border */
+        padding: 40px; /* More padding */
+        text-align: center;
+        margin-bottom: 30px; /* Increased margin */
+        border-radius: 12px; /* More rounded */
+        background-color: #fff; /* White background */
+        transition: background-color 0.3s ease;
+    }
+
+    .upload-section:hover {
+        background-color: #eef7ff; /* Subtle hover effect */
+    }
+
+    .file-input {
+        margin-bottom: 15px;
+        /* Basic styling for file input - more advanced styling often needs JS */
+        display: inline-block;
+        padding: 10px 15px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .upload-section p {
+        color: #666;
+        font-size: 0.95em;
+    }
+
+    .image-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(600px, 1fr));
+        gap: 30px; /* Increased gap */
+        margin-bottom: 30px; /* Increased margin */
+    }
+
+    .image-item {
+        width: 100%;
+    }
+
+    .preview-card {
+        border: 1px solid #eee;
+        padding: 20px; /* Increased padding */
+        border-radius: 12px; /* More rounded */
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08); /* Softer, deeper shadow */
+        background-color: #fff;
+        transition: transform 0.2s ease-in-out;
+    }
+
+    .preview-card:hover {
+        transform: translateY(-3px); /* Slight lift on hover */
+    }
+
+    .preview-card h3 { /* Center filename heading */
+       text-align: center;
+       margin-bottom: 1.2em;
+    }
+
+    .image-comparison {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 30px; /* Increased gap */
+        align-items: flex-start; /* Align items top */
+    }
+
+    .image-side {
+        flex: 1;
+        min-width: 280px; /* Slightly wider */
+        text-align: center; /* Center text and image within side */
+    }
+
+    .image-side h4 {
+        text-align: center; /* Ensure h4 is centered */
+    }
+
+        .image-side img {
+            max-width: 100%;
+            height: auto;
+            margin: 0 auto 15px auto; /* Center image and add bottom margin */
+            border-radius: 8px; /* More rounded */
+            display: block; /* Ensure block display for centering */
+            border: 1px solid #eee; /* Subtle border */
+        }
+
+    .image-side p {
+        font-size: 0.9em;
+        color: #555;
+        margin-bottom: 5px;
+    }
+
+    .settings {
+        background-color: #ffffff; /* White background */
+        padding: 25px; /* Increased padding */
+        border-radius: 12px; /* More rounded */
+        margin-bottom: 30px; /* Increased margin */
+        border: 1px solid #e9ecef; /* Subtle border */
+    }
+
+    .settings h2 {
+        margin-top: 0; /* Remove default top margin */
+    }
+
+    .quality-slider {
+        margin-bottom: 25px; /* Increased margin */
+    }
+
+    .quality-slider label {
+        display: block;
+        margin-bottom: 10px;
+        font-weight: 500;
+        color: #333;
+    }
+
+        .quality-slider input {
+            width: 100%;
+            cursor: pointer;
+            height: 8px; /* Make slider track thicker */
+        }
+
+    .preset-buttons {
+        display: flex;
+        gap: 15px; /* Increased gap */
+        margin-bottom: 25px; /* Increased margin */
+        justify-content: center; /* Center preset buttons */
+    }
+
+    .preset-btn {
+        padding: 10px 20px; /* Larger padding */
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 6px; /* Slightly more rounded */
+        cursor: pointer;
+        font-size: 0.95em;
+        transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+        .preset-btn:hover {
+            background-color: #0056b3; /* Darker hover */
+            transform: translateY(-1px); /* Slight lift */
+        }
+
+    .compress-button-container {
+        text-align: center;
+        margin-top: 20px;
+    }
+
+    .compress-btn {
+        padding: 12px 30px; /* Larger padding */
+        background-color: #dc3545; /* Red for emphasis */
+        color: white;
+        border: none;
+        border-radius: 6px; /* Slightly more rounded */
+        cursor: pointer;
+        font-size: 1.1em; /* Larger font */
+        font-weight: bold;
+        transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+        .compress-btn:hover {
+            background-color: #c82333; /* Darker hover */
+            transform: translateY(-1px); /* Slight lift */
+        }
+
+    .download-btn {
+        display: inline-block;
+        padding: 8px 18px; /* Adjusted padding */
+        background-color: #28a745; /* Green for download */
+        color: white;
+        text-decoration: none;
+        border-radius: 6px; /* Slightly more rounded */
+        margin-top: 15px; /* Increased margin */
+        font-size: 0.9em;
+        transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+        .download-btn:hover {
+            background-color: #218838; /* Darker hover */
+            transform: translateY(-1px); /* Slight lift */
+        }
+
+    .download-all-container {
+        text-align: center;
+        margin-top: 30px;
+        margin-bottom: 20px;
+    }
+
+    .download-all-btn {
+        padding: 12px 30px; /* Consistent padding */
+        background-color: #17a2b8; /* Info color for download all */
+        color: white;
+        border: none;
+        border-radius: 6px; /* Slightly more rounded */
+        cursor: pointer;
+        font-size: 1.1em; /* Larger font */
+        font-weight: bold;
+        transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+        .download-all-btn:hover {
+            background-color: #138496; /* Darker hover */
+            transform: translateY(-1px); /* Slight lift */
+        }
+
+    .loading {
+        text-align: center;
+        padding: 30px; /* Increased padding */
+        color: #555;
+    }
+
+    .progress-container {
+        width: 100%;
+        background-color: #f3f3f3;
+        border-radius: 8px; /* More rounded */
+        margin: 15px 0; /* Adjusted margin */
+        height: 25px; /* Thicker bar */
+        overflow: hidden; /* Ensure progress bar stays within bounds */
+    }
+
+    .progress-bar {
+        height: 100%;
+        background-color: #28a745; /* Consistent green */
+        border-radius: 8px; /* Match container */
+        transition: width 0.4s ease; /* Smoother transition */
+        text-align: center; /* Center text if needed inside */
+        color: white;
+        line-height: 25px; /* Match height */
+    }
+
+    .error-message {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 15px 20px; /* Adjusted padding */
+        border-radius: 8px; /* More rounded */
+        margin-bottom: 30px; /* Increased margin */
+        text-align: center;
+        border: 1px solid #f5c6cb; /* Add border */
+    }
+
+    /* Add styles for uploaded file list */
+    .uploaded-files {
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 30px;
+        border: 1px solid #e9ecef;
+    }
+
+    .uploaded-files h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 0.5em;
+    }
+
+    .file-info {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #f1f1f1;
+        font-size: 0.95em;
+    }
+
+    .file-info:last-child {
+        border-bottom: none;
+    }
+
+    .filename {
+        color: #333;
+        font-weight: 500;
+    }
+
+    .filesize {
+        color: #666;
+    }
+
+</style>
