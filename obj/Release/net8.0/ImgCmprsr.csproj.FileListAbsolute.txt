@@ -1033,3 +1033,6 @@ C:\Users\ALEJANDRIO.VASAY\source\repos\MultiFileImageCompressor\obj\Release\net8
 C:\Users\ALEJANDRIO.VASAY\source\repos\MultiFileImageCompressor\obj\Release\net8.0\refint\ImgCmprsr.dll
 C:\Users\ALEJANDRIO.VASAY\source\repos\MultiFileImageCompressor\obj\Release\net8.0\ImgCmprsr.pdb
 C:\Users\ALEJANDRIO.VASAY\source\repos\MultiFileImageCompressor\obj\Release\net8.0\ref\ImgCmprsr.dll
+C:\Users\ALEJANDRIO.VASAY\source\repos\MultiFileImageCompressor\bin\Release\net8.0\docs\sample-data\weather.json
+C:\Users\ALEJANDRIO.VASAY\source\repos\MultiFileImageCompressor\bin\Release\net8.0\docs\_framework\blazor.boot.json
+C:\Users\ALEJANDRIO.VASAY\source\repos\MultiFileImageCompressor\obj\Release\net8.0\ImgCmprsr.sourcelink.json
