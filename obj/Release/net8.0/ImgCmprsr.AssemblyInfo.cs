@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ImgCmprsr")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1c1bbd2f522fd34bc09db11485f1a0e998812c03")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+69fe765a4b5c0fb2dc3418bd05b4ace42e3b86f3")]
 [assembly: System.Reflection.AssemblyProductAttribute("ImgCmprsr")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ImgCmprsr")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
