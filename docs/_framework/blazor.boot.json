@@ -1,7 +1,7 @@
 {
   "mainAssemblyName": "ImgCmprsr",
   "resources": {
-    "hash": "sha256-eHSzdbkjArrXxs8AFVr9+dt5Q8qNkeFnxQeJ4GIPugM=",
+    "hash": "sha256-cqRkYoIw5K9e0LzHS5w5SNUmK+cF+Pm0HHT2oxtzyMM=",
     "jsModuleNative": {
       "dotnet.native.8.0.10.yatax25khq.js": "sha256-QVxMlY7ohmjgde/bZMA0dlWDAeuUP+tEfkiSdg4DFcE="
     },
@@ -17,7 +17,7 @@
       "icudt_no_CJK.dat": "sha256-L7sV7NEYP37/Qr2FPCePo5cJqRgTXRwGHuwF5Q+0Nfs="
     },
     "assembly": {
-      "ImgCmprsr.wasm": "sha256-D1e7Vdekt3ZATgsJDyd0xel0WVO6d6Z7oBRS/5spVoU=",
+      "ImgCmprsr.wasm": "sha256-4oHEVwKU7Bu3tLYY4naJ2eO8q/7o7yGBcTdFlxYvkyQ=",
       "Microsoft.AspNetCore.Components.wasm": "sha256-xcvJNtJDMwOIfT+TmViOF0co6y91SJwxXfwy/+qqWrE=",
       "Microsoft.AspNetCore.Components.Web.wasm": "sha256-yVHFxDGciIlanO6w9HeCtKzbSrpmDuYViKlJeXmWuHI=",
       "Microsoft.AspNetCore.Components.WebAssembly.wasm": "sha256-ePI2+Aems/VB/WFDA481eKNhaG9F6F89Nzqxm7WX0eE=",
